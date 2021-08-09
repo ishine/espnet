@@ -361,7 +361,7 @@ class Transformer(AbsTTS):
         self._reset_parameters(
             init_type=init_type,
             init_enc_alpha=init_enc_alpha,
-            init_dec_alpha=init_enc_alpha,
+            init_dec_alpha=init_dec_alpha,
         )
 
     def _reset_parameters(self, init_type, init_enc_alpha=1.0, init_dec_alpha=1.0):
@@ -420,12 +420,17 @@ class Transformer(AbsTTS):
         # modifiy mod part of groundtruth
         olens_in = olens
         if self.reduction_factor > 1:
+            assert olens.ge(
+                self.reduction_factor
+            ).all(), "Output length must be greater than or equal to reduction factor."
             olens_in = olens.new([olen // self.reduction_factor for olen in olens])
             olens = olens.new([olen - olen % self.reduction_factor for olen in olens])
             max_olen = max(olens)
             ys = ys[:, :max_olen]
             labels = labels[:, :max_olen]
-            labels[:, -1] = 1.0  # make sure at least one frame has 1
+            labels = torch.scatter(
+                labels, 1, (olens - 1).unsqueeze(1), 1.0
+            )  # see #3388
 
         # caluculate loss values
         l1_loss, l2_loss, bce_loss = self.criterion(
